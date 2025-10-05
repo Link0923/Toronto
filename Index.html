@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Shannon Webmap Tool for Toronto</title>
+  <link rel="stylesheet" href="https://js.arcgis.com/4.32/esri/themes/light/main.css" />
+  <script src="https://js.arcgis.com/4.32/"></script>
+  <style>
+    html, body, #viewDiv { margin: 0; padding: 0; height: 100%; width: 100%; }
+    body { box-sizing: border-box; }
+    #appContainer { display: flex; flex-direction: column; height: 100vh; width: 100vw; }
+    #toolbox { display: flex; flex-direction: row; align-items: center; background: #fff; border-bottom: 1px solid #ccc; padding: 4px 8px; gap: 8px; z-index: 10; height: 44px; min-height: 36px; max-height: 48px; box-shadow: 0 2px 4px rgba(0,0,0,0.03); position: relative; }
+    #toolbox button { background: #f8f8f8; border: 1px solid #ccc; border-radius: 4px; padding: 6px 14px; font-size: 14px; cursor: pointer; transition: background 0.2s; }
+    #toolbox button.active, #toolbox button:focus { background: #e0eaff; border-color: #7dafff; outline: none; }
+    #mainContent { flex: 1; display: flex; flex-direction: row; min-height: 0; min-width: 0; }
+    #viewDiv { flex: 1; min-width: 0; min-height: 0; position: relative; z-index: 1; }
+    #manipulator { width: 420px; max-width: 90vw; background: #fff; border-left: 1px solid #ccc; box-shadow: -2px 0 6px rgba(0,0,0,0.04); display: flex; flex-direction: column; align-items: stretch; padding: 0; z-index: 10; min-width: 300px; transition: width 0.3s ease, transform 0.3s ease; overflow-y: auto; transform: translateX(0); }
+    #manipulator.hidden { transform: translateX(100%); width: 0; min-width: 0; overflow: hidden; }
+    .tool-panel, .dialog-panel { display: none; flex: 0 0 auto; padding: 16px 14px 14px 14px; border-bottom: 1px solid #eee; background: #fff; }
+    .tool-panel.active, .dialog-panel.active { display: block; }
+    .dialog-panel { background: #f7faff; border-left: 4px solid #7dafff; margin-bottom: 8px; }
+    .panel-title { font-weight: bold; font-size: 16px; margin-bottom: 8px; color: #1a3a5b; }
+    @media (max-width: 900px) { #manipulator { width: 200px; min-width: 120px; } #toolbox { font-size: 13px; } }
+    #legendContainer_2, #pinsLegendContainer, #zoning569_2013FilterOptions, #zoningNotPartFilterOptions { max-width: 100%; min-width: 250px; max-height: 350px; overflow-y: auto; overflow-x: auto; }
+    #filterContainer label { display: block; }
+    #transparencyContainer label { font-weight: bold; }
+    #transparencyContainer input[type="range"] { width: 100%; }
+  </style>
+</head>
+<body>
+  <div id="appContainer">
+    <div id="toolbox">
+      <button id="measureButton">Measure</button>
+      <button id="transparencyButton">Zone Transparency</button>
+      <button id="pinsButton">Pins</button>
+      <button id="filterButton">Filter by ZONE</button>
+      <button id="zoning569_2013LayerButton">Hide Zoning 569-2013 Layer</button>
+      <button id="legendToggleButton2">Open Zoning Legends</button>
+      <button id="schedule_ELayerButton">Show Zoning not part of this by-law</button>
+    </div>
+    <div id="mainContent">
+      <div id="viewDiv">
+      </div>
+      <div id="manipulator">
+        <div id="measurePanel" class="tool-panel">
+          <div class="panel-title">Measure</div>
+          <p>Click on the map to start measuring distance.</p>
+        </div>
+        <div id="measureResultPanel" class="dialog-panel">
+          <div class="panel-title">Measurement Results</div>
+          <div id="measureResults"></div>
+        </div>
+        <div id="transparencyPanel" class="tool-panel">
+          <div class="panel-title">Zoning 569-2013</div>
+          <div id="transparencyContainer2">
+            <label for="opacitySlider2">Zoning 569-2013 Opacity: <span id="opacityValue2">1</span></label>
+            <input type="range" id="opacitySlider2" min="0" max="1" step="0.1" value="1" />
+          </div>
+          <div class="panel-title">Zoning not part of this by-law</div>
+          <div id="transparencyContainer4">
+            <label for="opacitySlider4">Zoning not part of this by-law Opacity: <span id="opacityValue4">1</span></label>
+            <input type="range" id="opacitySlider4" min="0" max="1" step="0.1" value="1" />
+          </div>
+        </div>
+        <div id="zoning569_2013LegendPanel" class="tool-panel">
+          <div class="panel-title">Zoning Legends</div>
+          <div class="panel-title" style="font-size: 14px; margin-bottom: 6px; color: #555;">Zoning 569-2013</div>
+          <div id="legendContainer_2"></div>
+          <hr style="margin: 12px 0; border: 1px solid #eee;">
+          <div class="panel-title" style="font-size: 14px; margin-bottom: 6px; color: #555;">Zoning not part of this by-law</div>
+          <div id="zoningNotPartLegendContainer">
+            <div style="display:flex;align-items:center;margin-bottom:8px;">
+              <span style="display:inline-block;width:22px;height:22px;background:repeating-linear-gradient(-45deg, rgb(110,110,110), rgb(110,110,110) 2px, transparent 2px, transparent 4px);border:1px solid #444;margin-right:8px;"></span>
+              <span style="font-weight:bold;">Zoning not part of this by-law</span>
+            </div>
+          </div>
+        </div>
+        <div id="pinsPanel" class="tool-panel">
+          <div class="panel-title">Pins Legend</div>
+          <button id="togglePinsLayerButton">Hide</button>
+          <div id="pinsLegendContainer"></div>
+        </div>
+        <div id="filterPanel" class="tool-panel">
+          <div class="panel-title">Filter by ZONE</div>
+          <div id="filterContainer">
+            <strong>Select Zoning 569-2013 Zone Codes:</strong>
+            <div id="zoning569_2013FilterOptions"></div>
+            <button id="applyZoning569_2013Filter">Apply</button>
+            <button id="clearZoning569_2013Filter">Clear</button>
+            
+            <hr style="margin: 16px 0; border: 1px solid #eee;">
+            
+            <strong>Select Zoning not part of this by-law Zone Codes:</strong>
+            <div id="zoningNotPartFilterOptions"></div>
+            <button id="applyZoningNotPartFilter">Apply</button>
+            <button id="clearZoningNotPartFilter">Clear</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    require([
+      "esri/Map", "esri/views/MapView", "esri/layers/FeatureLayer", "esri/widgets/ScaleBar",
+      "esri/widgets/BasemapToggle", "esri/widgets/DistanceMeasurement2D", "esri/widgets/AreaMeasurement2D",
+      "esri/layers/CSVLayer", "esri/widgets/Legend"
+    ], function (
+      EsriMap, MapView, FeatureLayer, ScaleBar, BasemapToggle,
+      DistanceMeasurement2D, AreaMeasurement2D, CSVLayer, Legend
+    ) {
+      const schedule_E = new FeatureLayer({
+        url: "https://gis.toronto.ca/arcgis/rest/services/cot_geospatial11/FeatureServer/12",
+        title: "Zoning not part of this by-law",
+        renderer: {
+          type: "simple",
+          symbol: {
+            type: "simple-fill",
+            style: "backward-diagonal",
+            color: [170, 0, 0, 255],
+            outline: null
+          }
+        }
+      });
+
+      const zoningGroupExpressions = {
+        "Residential": [0],
+        "Parks and Open Space": [1],
+        "Utility / Transportation": [2],
+        "Employment": [4],
+        "Institutional": [5],
+        "CRE-Commercial Residiential Employment": [6],
+        "Residential Apartment": [101],
+        "Commercial": [201],
+        "Commercial Residential": [202],
+      };
+
+
+      const zoning569_2013RendererGroups = [
+        { label: "Residential", color: [255, 255, 115, 255], values: zoningGroupExpressions["Residential"] },
+        { label: "Parks and Open Space", color: [163, 254, 115, 255], values: zoningGroupExpressions["Parks and Open Space"] },
+        { label: "Utility / Transportation", color: [130, 130, 130, 255], values: zoningGroupExpressions["Utility / Transportation"] },
+        { label: "Employment", color: [202, 122, 245, 255], values: zoningGroupExpressions["Employment"] },
+        { label: "Institutional", color: [115, 223, 254, 255], values: zoningGroupExpressions["Institutional"] },
+        { label: "CRE-Commercial Residiential Employment", color: [205, 137, 102, 255], values: zoningGroupExpressions["CRE-Commercial Residiential Employment"] },
+        { label: "Residential Apartment", color: [255, 170, 0, 255], values: zoningGroupExpressions["Residential Apartment"] },
+        { label: "Commercial", color: [255, 176, 232, 255], values: zoningGroupExpressions["Commercial"] },
+        { label: "Commercial Residential", color: [255, 100, 100, 255], values: zoningGroupExpressions["Commercial Residential"] },
+      ];
+
+      const zoning569_2013 = [
+        new FeatureLayer({
+          url: "https://gis.toronto.ca/arcgis/rest/services/cot_geospatial11/FeatureServer/3",
+          title: "Zoning 569-2013",
+          labelingInfo: [{
+            labelExpressionInfo: { expression: "$feature.ZN_ZONE" },
+            symbol: { type: "text", color: "#222", haloColor: "#fff", haloSize: "1px", font: { size: 12, family: "Arial", weight: "bold" } },
+            labelPlacement: "always-horizontal"
+          }],
+          labelsVisible: true,
+          renderer: {
+            type: "unique-value",
+            field: "ZN_LU_CATEGORY",
+            uniqueValueInfos: zoning569_2013RendererGroups.flatMap(group =>
+              group.values.map(value => ({
+                value,
+                symbol: { type: "simple-fill", color: group.color, outline: { color: [60, 60, 60, 0.5], width: 0.5 } },
+                label: group.label
+              }))
+            )
+          }
+        })
+      ];
+
+      const map = new EsriMap({ basemap: "hybrid" });
+      map.add(zoning569_2013[0]);
+      map.add(schedule_E);
+      const view = new MapView({ container: "viewDiv", map: map, center: [-79.3827, 43.7137], zoom: 12 });
+
+      let zoning569_2013LayerButton = true;
+      let schedule_EVisible = false;
+      zoning569_2013[0].visible = true;
+      schedule_E.visible = false;
+
+      view.ui.add(new ScaleBar({ view, unit: "metric" }), "bottom-left");
+      view.ui.add(new BasemapToggle({ view, nextBasemap: "streets-vector" }), "top-left");
+      const distanceMeasurement2D = new DistanceMeasurement2D({ view, visible: false });
+      const areaMeasurement2D = new AreaMeasurement2D({ view, visible: false });
+      view.ui.add(distanceMeasurement2D, "top-right");
+      view.ui.add(areaMeasurement2D, "top-right");
+
+      const pins = new CSVLayer({
+        url: "https://dl.dropboxusercontent.com/scl/fi/e5u6k2c0t0s0ysguv0kh9/Vaughan_D_S_Locations.csv?rlkey=4zgx82hwnxyxliojz5qz3qrxl&st=bckho7hu&dl=0",
+        title: "D and S Type Pins",
+        renderer: {
+          type: "unique-value",
+          field: "Type",
+          uniqueValueInfos: [
+            { value: "D", symbol: { type: "simple-marker", color: "#FF0000", size: "12px", outline: { color: "#00FF00", width: 2 } } },
+            { value: "S", symbol: { type: "simple-marker", color: "#00FF00", size: "12px", outline: { color: "#FF0000", width: 2 } } }
+          ]
+        }
+      });
+
+      function renderZoning5692013Legend() {
+        const container = document.getElementById("legendContainer_2");
+        container.innerHTML = zoning569_2013RendererGroups.map(item => `
+          <div style="display:flex;align-items:center;margin-bottom:8px;">
+            <span style="display:inline-block;width:22px;height:22px;background:rgb(${item.color.slice(0,3).join(',')});border:1px solid #444;margin-right:8px;"></span>
+            <label style="display:flex;align-items:center;gap:4px;">
+              <input type="checkbox" class="zoning-group" value="${item.label}" checked>
+              <span style="font-weight:bold;">${item.label}</span>
+            </label>
+          </div>
+        `).join("");
+      }
+
+      function updateZoning5692013DefinitionExpression() {
+        const checkedGroups = Array.from(document.querySelectorAll('#legendContainer_2 .zoning-group:checked')).map(cb => cb.value);
+        let allZones = [];
+        checkedGroups.forEach(group => { 
+          if (zoningGroupExpressions[group]) allZones = allZones.concat(zoningGroupExpressions[group]); 
+        });
+        zoning569_2013[0].definitionExpression = allZones.length > 0 ? `ZN_LU_CATEGORY IN (${allZones.join(",")})` : "1=0";
+      }
+
+      renderZoning5692013Legend();
+      
+      // Function to manage manipulator panel visibility
+      function updateManipulatorVisibility() {
+        const manipulator = document.getElementById("manipulator");
+        const activePanels = document.querySelectorAll('.tool-panel.active, .dialog-panel.active');
+        
+        if (activePanels.length > 0) {
+          manipulator.classList.remove('hidden');
+        } else {
+          manipulator.classList.add('hidden');
+        }
+      }
+      
+      // Initialize manipulator as hidden
+      document.getElementById("manipulator").classList.add('hidden');
+      
+      document.getElementById("legendContainer_2").addEventListener("change", function(e) {
+        if (!zoning569_2013[0].visible && e.target.classList.contains('zoning-group') && e.target.checked) {
+          zoning569_2013LayerButton = true;
+          zoning569_2013[0].visible = true;
+          document.getElementById("zoning569_2013LayerButton").textContent = "Show Zoning 569-2013 Layer";
+          const checkboxes = document.querySelectorAll('#legendContainer_2 .zoning-group');
+          checkboxes.forEach(cb => cb.checked = false);
+          e.target.checked = true;
+        }
+        updateZoning5692013DefinitionExpression();
+        updateZoning5692013FilterOptions();
+      });
+
+      const toolboxButtons = [
+        { id: "measureButton", panel: "measurePanel" },
+        { id: "transparencyButton", panel: "transparencyPanel" },
+        { id: "filterButton", panel: "filterPanel" },
+        { id: "legendToggleButton2", panel: "zoning569_2013LegendPanel" },
+        { id: "pinsButton", panel: "pinsPanel" }
+      ];
+      toolboxButtons.forEach(({ id, panel }) => {
+        document.getElementById(id).addEventListener("click", () => {
+          const panelElem = document.getElementById(panel);
+          const btnElem = document.getElementById(id);
+          const isActive = panelElem.classList.contains('active');
+          
+          // Close all other panels first
+          document.querySelectorAll('.tool-panel.active').forEach(p => {
+            if (p !== panelElem) {
+              p.classList.remove('active');
+            }
+          });
+          document.querySelectorAll('#toolbox button.active').forEach(b => {
+            if (b !== btnElem) {
+              b.classList.remove('active');
+            }
+          });
+          
+          // Toggle current panel
+          panelElem.classList.toggle('active');
+          btnElem.classList.toggle('active');
+          
+          if (id === "measureButton") {
+            if (!isActive) setActiveWidget("distance");
+            else { 
+              setActiveWidget(null); 
+              document.getElementById("measureResultPanel").classList.remove("active"); 
+            }
+          } else setActiveWidget(null);
+          
+          if (id === "legendToggleButton2" && !isActive) renderZoning5692013Legend();
+          
+          // Update manipulator visibility
+          updateManipulatorVisibility();
+        });
+      });
+      toolboxButtons.forEach(({panel, id}) => {
+        document.getElementById(panel).classList.remove('active');
+        document.getElementById(id).classList.remove('active');
+      });
+      document.getElementById("measureResultPanel").classList.remove("active");
+
+      document.getElementById("schedule_ELayerButton").addEventListener("click", function() {
+        schedule_EVisible = !schedule_EVisible;
+        schedule_E.visible = schedule_EVisible;
+        this.textContent = schedule_EVisible ? "Hide Zoning not part of this by-law" : "Show Zoning not part of this by-law";
+      });
+
+      document.getElementById("zoning569_2013LayerButton").addEventListener("click", function() {
+        zoning569_2013LayerButton = !zoning569_2013LayerButton;
+        zoning569_2013[0].visible = zoning569_2013LayerButton;
+        this.textContent = zoning569_2013LayerButton ? "Hide Zoning 569-2013 Layer" : "Show Zoning 569-2013 Layer";
+
+        const checkboxes = document.querySelectorAll('#legendContainer_2 .zoning-group');
+        if (!zoning569_2013LayerButton) {
+          checkboxes.forEach(cb => cb.checked = false);
+          updateZoning5692013DefinitionExpression();
+        } else {
+          checkboxes.forEach(cb => cb.checked = true);
+          updateZoning5692013DefinitionExpression();
+        }
+      });
+
+      let pinsLayerVisible = true;
+      function updatePinsLayer() {
+        if (pinsLayerVisible) { if (!map.layers.includes(pins)) map.add(pins); document.getElementById("togglePinsLayerButton").textContent = "Hide"; }
+        else { if (map.layers.includes(pins)) map.remove(pins); document.getElementById("togglePinsLayerButton").textContent = "Show"; }
+      }
+      document.getElementById("togglePinsLayerButton").addEventListener("click", function() {
+        pinsLayerVisible = !pinsLayerVisible;
+        updatePinsLayer();
+      });
+      updatePinsLayer();
+      let pinsLegend = null;
+      document.getElementById("pinsButton").addEventListener("click", function() {
+        if (!pinsLegend) pinsLegend = new Legend({ view: view, container: "pinsLegendContainer", layerInfos: [{ layer: pins, title: "D and S Type Pins" }] });
+        pinsLayerVisible = true;
+        updatePinsLayer();
+      });
+
+      function setActiveWidget(type) {
+        switch (type) {
+          case "distance":
+            areaMeasurement2D.visible = false;
+            distanceMeasurement2D.visible = true;
+            distanceMeasurement2D.viewModel.start();
+            break;
+          case null:
+            areaMeasurement2D.visible = false;
+            distanceMeasurement2D.visible = false;
+            break;
+        }
+      }
+      distanceMeasurement2D.watch("measurement", function(measurement) {
+        if (measurement && measurement.state === "measured") {
+          const resultsPanel = document.getElementById("measureResultPanel");
+          const resultsDiv = document.getElementById("measureResults");
+          resultsDiv.innerHTML = `
+            <div><strong>Distance:</strong> ${measurement.distance && measurement.distance.text ? measurement.distance.text : "N/A"}</div>
+            <div><strong>Unit:</strong> ${measurement.distance && measurement.distance.unit ? measurement.distance.unit : "N/A"}</div>
+          `;
+          resultsPanel.classList.add("active");
+          updateManipulatorVisibility();
+        }
+      });
+
+      document.getElementById("opacitySlider2").addEventListener("input", function() {
+        const value = parseFloat(this.value);
+        zoning569_2013[0].opacity = value;
+        document.getElementById("opacityValue2").innerText = value.toFixed(1);
+      });
+      document.getElementById("opacitySlider4").addEventListener("input", function() {
+        const value = parseFloat(this.value);
+        schedule_E.opacity = value;
+        document.getElementById("opacityValue4").innerText = value.toFixed(1);
+      });
+
+      function getZoneCategory(zoneCode) {
+        for (const [category, codes] of Object.entries(zoningGroupExpressions)) {
+          if (codes.includes(zoneCode)) return category;
+        }
+        return "Unknown";
+      }
+      function updateZoning5692013FilterOptions() {
+        const optionsContainer = document.getElementById("zoning569_2013FilterOptions");
+        
+        if (!zoning569_2013[0].visible) {
+          optionsContainer.innerHTML = "";
+          return;
+        }
+
+        const visibleCategories = Array.from(document.querySelectorAll('#legendContainer_2 .zoning-group:checked')).map(cb => cb.value);
+
+        zoning569_2013[0].queryFeatures({
+          where: "1=1",
+          outFields: ["ZN_ZONE"],
+          returnDistinctValues: true,
+          returnGeometry: false
+        }).then(function(results) {
+          optionsContainer.innerHTML = "";
+          const zones = results.features.map(f => f.attributes.ZN_ZONE).filter(z => z !== null && z !== undefined && z !== "").sort();
+          zones.forEach(zoneCode => {
+            const label = document.createElement("label");
+            label.innerHTML = `<input type="checkbox" value="${zoneCode}" /> ${zoneCode}`;
+            optionsContainer.appendChild(label);
+          });
+        });
+      }
+
+      function applyZoning5692013Filter() {
+        const selectedZones = Array.from(document.querySelectorAll('#zoning569_2013FilterOptions input:checked')).map(cb => cb.value);
+        zoning569_2013[0].definitionExpression = selectedZones.length > 0 ? `ZN_ZONE IN ('${selectedZones.join("','")}')` : "1=1";
+      }
+
+      function clearZoning5692013Filter() {
+        zoning569_2013[0].definitionExpression = "1=1";
+        document.querySelectorAll('#zoning569_2013FilterOptions input').forEach(cb => cb.checked = false);
+        updateZoning5692013FilterOptions();
+      }
+
+      // Filter functions for "Zoning not part of this by-law" layer
+      function updateZoningNotPartFilterOptions() {
+        const optionsContainer = document.getElementById("zoningNotPartFilterOptions");
+        
+        if (!schedule_E.visible) {
+          optionsContainer.innerHTML = "";
+          return;
+        }
+
+        schedule_E.queryFeatures({
+          where: "1=1",
+          outFields: ["ZN_ZONE"],
+          returnDistinctValues: true,
+          returnGeometry: false
+        }).then(function(results) {
+          optionsContainer.innerHTML = "";
+          const zones = results.features.map(f => f.attributes.ZN_ZONE).filter(z => z !== null && z !== undefined && z !== "").sort();
+          zones.forEach(zoneCode => {
+            const label = document.createElement("label");
+            label.innerHTML = `<input type="checkbox" value="${zoneCode}" /> ${zoneCode}`;
+            optionsContainer.appendChild(label);
+          });
+        });
+      }
+
+      function applyZoningNotPartFilter() {
+        const selectedZones = Array.from(document.querySelectorAll('#zoningNotPartFilterOptions input:checked')).map(cb => cb.value);
+        schedule_E.definitionExpression = selectedZones.length > 0 ? `ZN_ZONE IN ('${selectedZones.join("','")}')` : "1=1";
+      }
+
+      function clearZoningNotPartFilter() {
+        schedule_E.definitionExpression = "1=1";
+        document.querySelectorAll('#zoningNotPartFilterOptions input').forEach(cb => cb.checked = false);
+        updateZoningNotPartFilterOptions();
+      }
+
+      zoning569_2013[0].watch("visible", (visible) => {
+        updateZoning5692013FilterOptions();
+        if (visible) zoning569_2013[0].definitionExpression = "1=1";
+      });
+
+      schedule_E.watch("visible", (visible) => {
+        updateZoningNotPartFilterOptions();
+        if (visible) schedule_E.definitionExpression = "1=1";
+      });
+
+      document.getElementById("applyZoning569_2013Filter").addEventListener("click", applyZoning5692013Filter);
+      document.getElementById("clearZoning569_2013Filter").addEventListener("click", clearZoning5692013Filter);
+      document.getElementById("applyZoningNotPartFilter").addEventListener("click", applyZoningNotPartFilter);
+      document.getElementById("clearZoningNotPartFilter").addEventListener("click", clearZoningNotPartFilter);
+      document.getElementById("filterButton").addEventListener("click", function() {
+        updateZoning5692013FilterOptions();
+        updateZoningNotPartFilterOptions();
+      });
+    });
+  </script>
+</body>
+</html>
