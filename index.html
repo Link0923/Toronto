@@ -190,14 +190,14 @@
       view.ui.add(areaMeasurement2D, "top-right");
 
       const pins = new CSVLayer({
-        url: "https://dl.dropboxusercontent.com/scl/fi/e5u6k2c0t0s0ysguv0kh9/Vaughan_D_S_Locations.csv?rlkey=4zgx82hwnxyxliojz5qz3qrxl&st=bckho7hu&dl=0",
-        title: "D and S Type Pins",
+        url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ2s7ZSai-_Cp2nKvqBdhv-oy9WwZ8h16l1RoXe17z3akMBqCjEcHoz57_ur4icZdaoNMmGpVCUSTvW/pub?gid=1524407788&single=true&output=csv",
+        title: "Digital and Static Pins",
         renderer: {
           type: "unique-value",
-          field: "Type",
+          field: "Product",
           uniqueValueInfos: [
-            { value: "D", symbol: { type: "simple-marker", color: "#FF0000", size: "12px", outline: { color: "#00FF00", width: 2 } } },
-            { value: "S", symbol: { type: "simple-marker", color: "#00FF00", size: "12px", outline: { color: "#FF0000", width: 2 } } }
+            { value: "Digital", symbol: { type: "simple-marker", color: "#FF0000", size: "12px", outline: { color: "#00FF00", width: 2 } } },
+            { value: "Static", symbol: { type: "simple-marker", color: "#00FF00", size: "12px", outline: { color: "#FF0000", width: 2 } } }
           ]
         }
       });
@@ -226,7 +226,6 @@
 
       renderZoning5692013Legend();
       
-      // Function to manage manipulator panel visibility
       function updateManipulatorVisibility() {
         const manipulator = document.getElementById("manipulator");
         const activePanels = document.querySelectorAll('.tool-panel.active, .dialog-panel.active');
@@ -238,7 +237,6 @@
         }
       }
       
-      // Initialize manipulator as hidden
       document.getElementById("manipulator").classList.add('hidden');
       
       document.getElementById("legendContainer_2").addEventListener("change", function(e) {
@@ -267,7 +265,6 @@
           const btnElem = document.getElementById(id);
           const isActive = panelElem.classList.contains('active');
           
-          // Close all other panels first
           document.querySelectorAll('.tool-panel.active').forEach(p => {
             if (p !== panelElem) {
               p.classList.remove('active');
@@ -279,7 +276,6 @@
             }
           });
           
-          // Toggle current panel
           panelElem.classList.toggle('active');
           btnElem.classList.toggle('active');
           
@@ -293,7 +289,6 @@
           
           if (id === "legendToggleButton2" && !isActive) renderZoning5692013Legend();
           
-          // Update manipulator visibility
           updateManipulatorVisibility();
         });
       });
@@ -336,7 +331,7 @@
       updatePinsLayer();
       let pinsLegend = null;
       document.getElementById("pinsButton").addEventListener("click", function() {
-        if (!pinsLegend) pinsLegend = new Legend({ view: view, container: "pinsLegendContainer", layerInfos: [{ layer: pins, title: "D and S Type Pins" }] });
+        if (!pinsLegend) pinsLegend = new Legend({ view: view, container: "pinsLegendContainer", layerInfos: [{ layer: pins, title: "Digital and Static Pins" }] });
         pinsLayerVisible = true;
         updatePinsLayer();
       });
@@ -421,7 +416,6 @@
         updateZoning5692013FilterOptions();
       }
 
-      // Filter functions for "Zoning not part of this by-law" layer
       function updateZoningNotPartFilterOptions() {
         const optionsContainer = document.getElementById("zoningNotPartFilterOptions");
         
@@ -479,3 +473,5 @@
   </script>
 </body>
 </html>
+</html>
+
