@@ -26,6 +26,9 @@
     #filterContainer label { display: block; }
     #transparencyContainer label { font-weight: bold; }
     #transparencyContainer input[type="range"] { width: 100%; }
+    .legend-control-button { transition: all 0.2s ease; }
+    .legend-control-button:hover { opacity: 0.8; transform: translateY(-1px); }
+    .legend-control-button:active { transform: translateY(0); }
   </style>
 </head>
 <body>
@@ -66,6 +69,10 @@
         <div id="zoning569_2013LegendPanel" class="tool-panel">
           <div class="panel-title">Zoning Legends</div>
           <div class="panel-title" style="font-size: 14px; margin-bottom: 6px; color: #555;">Zoning 569-2013</div>
+          <div style="margin-bottom: 10px; display: flex; gap: 8px;">
+            <button id="checkAllZoningButton" class="legend-control-button" style="background: #e8f5e8; border: 1px solid #4caf50; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; color: #2e7d32;">Check All</button>
+            <button id="clearAllZoningButton" class="legend-control-button" style="background: #ffeaea; border: 1px solid #f44336; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; color: #c62828;">Clear All</button>
+          </div>
           <div id="legendContainer_2"></div>
           <hr style="margin: 12px 0; border: 1px solid #eee;">
           <div class="panel-title" style="font-size: 14px; margin-bottom: 6px; color: #555;">Zoning not part of this by-law</div>
@@ -204,15 +211,27 @@
 
       function renderZoning5692013Legend() {
         const container = document.getElementById("legendContainer_2");
-        container.innerHTML = zoning569_2013RendererGroups.map(item => `
-          <div style="display:flex;align-items:center;margin-bottom:8px;">
-            <span style="display:inline-block;width:22px;height:22px;background:rgb(${item.color.slice(0,3).join(',')});border:1px solid #444;margin-right:8px;"></span>
-            <label style="display:flex;align-items:center;gap:4px;">
-              <input type="checkbox" class="zoning-group" value="${item.label}" checked>
-              <span style="font-weight:bold;">${item.label}</span>
-            </label>
-          </div>
-        `).join("");
+        
+        // Store current checkbox states before re-rendering
+        const currentStates = {};
+        const existingCheckboxes = container.querySelectorAll('.zoning-group');
+        existingCheckboxes.forEach(cb => {
+          currentStates[cb.value] = cb.checked;
+        });
+        
+        container.innerHTML = zoning569_2013RendererGroups.map(item => {
+          // Use stored state if available, otherwise default to checked
+          const isChecked = currentStates.hasOwnProperty(item.label) ? currentStates[item.label] : true;
+          return `
+            <div style="display:flex;align-items:center;margin-bottom:8px;">
+              <span style="display:inline-block;width:22px;height:22px;background:rgb(${item.color.slice(0,3).join(',')});border:1px solid #444;margin-right:8px;"></span>
+              <label style="display:flex;align-items:center;gap:4px;">
+                <input type="checkbox" class="zoning-group" value="${item.label}" ${isChecked ? 'checked' : ''}>
+                <span style="font-weight:bold;">${item.label}</span>
+              </label>
+            </div>
+          `;
+        }).join("");
       }
 
       function updateZoning5692013DefinitionExpression() {
@@ -221,7 +240,14 @@
         checkedGroups.forEach(group => { 
           if (zoningGroupExpressions[group]) allZones = allZones.concat(zoningGroupExpressions[group]); 
         });
-        zoning569_2013[0].definitionExpression = allZones.length > 0 ? `ZN_LU_CATEGORY IN (${allZones.join(",")})` : "1=0";
+        
+        // Only update the definition expression based on legend selections here
+        // Zone-specific filtering is handled by the filter functions
+        if (allZones.length > 0) {
+          zoning569_2013[0].definitionExpression = `ZN_LU_CATEGORY IN (${allZones.join(",")})`;
+        } else {
+          zoning569_2013[0].definitionExpression = "1=0";
+        }
       }
 
       renderZoning5692013Legend();
@@ -243,7 +269,7 @@
         if (!zoning569_2013[0].visible && e.target.classList.contains('zoning-group') && e.target.checked) {
           zoning569_2013LayerButton = true;
           zoning569_2013[0].visible = true;
-          document.getElementById("zoning569_2013LayerButton").textContent = "Show Zoning 569-2013 Layer";
+          document.getElementById("zoning569_2013LayerButton").textContent = "Hide Zoning 569-2013 Layer";
           const checkboxes = document.querySelectorAll('#legendContainer_2 .zoning-group');
           checkboxes.forEach(cb => cb.checked = false);
           e.target.checked = true;
@@ -302,6 +328,8 @@
         schedule_EVisible = !schedule_EVisible;
         schedule_E.visible = schedule_EVisible;
         this.textContent = schedule_EVisible ? "Hide Zoning not part of this by-law" : "Show Zoning not part of this by-law";
+        // Update filter options when layer visibility changes
+        updateZoningNotPartFilterOptions();
       });
 
       document.getElementById("zoning569_2013LayerButton").addEventListener("click", function() {
@@ -317,6 +345,8 @@
           checkboxes.forEach(cb => cb.checked = true);
           updateZoning5692013DefinitionExpression();
         }
+        // Update filter options when layer visibility changes
+        updateZoning5692013FilterOptions();
       });
 
       let pinsLayerVisible = true;
@@ -384,13 +414,43 @@
         
         if (!zoning569_2013[0].visible) {
           optionsContainer.innerHTML = "";
+          // Clear any active filters when layer is hidden
+          zoning569_2013[0].definitionExpression = "1=0";
           return;
         }
 
         const visibleCategories = Array.from(document.querySelectorAll('#legendContainer_2 .zoning-group:checked')).map(cb => cb.value);
+        
+        // If no categories are selected in the legend, clear the filter options
+        if (visibleCategories.length === 0) {
+          optionsContainer.innerHTML = "";
+          // Set definition expression to show nothing when no categories are selected
+          zoning569_2013[0].definitionExpression = "1=0";
+          return;
+        }
 
+        // Get all zone codes for the visible categories
+        let allVisibleZoneCodes = [];
+        visibleCategories.forEach(category => {
+          if (zoningGroupExpressions[category]) {
+            allVisibleZoneCodes = allVisibleZoneCodes.concat(zoningGroupExpressions[category]);
+          }
+        });
+
+        if (allVisibleZoneCodes.length === 0) {
+          optionsContainer.innerHTML = "";
+          zoning569_2013[0].definitionExpression = "1=0";
+          return;
+        }
+
+        // Reset to show all zones in visible categories (clear any zone-specific filters)
+        zoning569_2013[0].definitionExpression = `ZN_LU_CATEGORY IN (${allVisibleZoneCodes.join(",")})`;
+
+        // Query features with the same definition expression as the layer
+        const whereClause = `ZN_LU_CATEGORY IN (${allVisibleZoneCodes.join(",")})`;
+        
         zoning569_2013[0].queryFeatures({
-          where: "1=1",
+          where: whereClause,
           outFields: ["ZN_ZONE"],
           returnDistinctValues: true,
           returnGeometry: false
@@ -407,13 +467,43 @@
 
       function applyZoning5692013Filter() {
         const selectedZones = Array.from(document.querySelectorAll('#zoning569_2013FilterOptions input:checked')).map(cb => cb.value);
-        zoning569_2013[0].definitionExpression = selectedZones.length > 0 ? `ZN_ZONE IN ('${selectedZones.join("','")}')` : "1=1";
+        const checkedGroups = Array.from(document.querySelectorAll('#legendContainer_2 .zoning-group:checked')).map(cb => cb.value);
+        
+        let allVisibleZoneCodes = [];
+        checkedGroups.forEach(group => { 
+          if (zoningGroupExpressions[group]) allVisibleZoneCodes = allVisibleZoneCodes.concat(zoningGroupExpressions[group]); 
+        });
+        
+        if (allVisibleZoneCodes.length === 0) {
+          zoning569_2013[0].definitionExpression = "1=0";
+          return;
+        }
+        
+        let finalExpression = `ZN_LU_CATEGORY IN (${allVisibleZoneCodes.join(",")})`;
+        
+        if (selectedZones.length > 0) {
+          finalExpression += ` AND ZN_ZONE IN ('${selectedZones.join("','")}')`;
+        }
+        
+        zoning569_2013[0].definitionExpression = finalExpression;
       }
 
       function clearZoning5692013Filter() {
-        zoning569_2013[0].definitionExpression = "1=1";
+        const checkedGroups = Array.from(document.querySelectorAll('#legendContainer_2 .zoning-group:checked')).map(cb => cb.value);
+        
+        let allVisibleZoneCodes = [];
+        checkedGroups.forEach(group => { 
+          if (zoningGroupExpressions[group]) allVisibleZoneCodes = allVisibleZoneCodes.concat(zoningGroupExpressions[group]); 
+        });
+        
+        // Reset to show all zones in visible categories
+        if (allVisibleZoneCodes.length > 0) {
+          zoning569_2013[0].definitionExpression = `ZN_LU_CATEGORY IN (${allVisibleZoneCodes.join(",")})`;
+        } else {
+          zoning569_2013[0].definitionExpression = "1=0";
+        }
+        
         document.querySelectorAll('#zoning569_2013FilterOptions input').forEach(cb => cb.checked = false);
-        updateZoning5692013FilterOptions();
       }
 
       function updateZoningNotPartFilterOptions() {
@@ -421,8 +511,13 @@
         
         if (!schedule_E.visible) {
           optionsContainer.innerHTML = "";
+          // Clear any active filters when layer is hidden
+          schedule_E.definitionExpression = "1=0";
           return;
         }
+
+        // Reset to show all features when layer becomes visible
+        schedule_E.definitionExpression = "1=1";
 
         schedule_E.queryFeatures({
           where: "1=1",
@@ -451,16 +546,6 @@
         updateZoningNotPartFilterOptions();
       }
 
-      zoning569_2013[0].watch("visible", (visible) => {
-        updateZoning5692013FilterOptions();
-        if (visible) zoning569_2013[0].definitionExpression = "1=1";
-      });
-
-      schedule_E.watch("visible", (visible) => {
-        updateZoningNotPartFilterOptions();
-        if (visible) schedule_E.definitionExpression = "1=1";
-      });
-
       document.getElementById("applyZoning569_2013Filter").addEventListener("click", applyZoning5692013Filter);
       document.getElementById("clearZoning569_2013Filter").addEventListener("click", clearZoning5692013Filter);
       document.getElementById("applyZoningNotPartFilter").addEventListener("click", applyZoningNotPartFilter);
@@ -469,9 +554,22 @@
         updateZoning5692013FilterOptions();
         updateZoningNotPartFilterOptions();
       });
+
+      // Check All and Clear All buttons for legend
+      document.getElementById("checkAllZoningButton").addEventListener("click", function() {
+        const checkboxes = document.querySelectorAll('#legendContainer_2 .zoning-group');
+        checkboxes.forEach(cb => cb.checked = true);
+        updateZoning5692013DefinitionExpression();
+        updateZoning5692013FilterOptions();
+      });
+
+      document.getElementById("clearAllZoningButton").addEventListener("click", function() {
+        const checkboxes = document.querySelectorAll('#legendContainer_2 .zoning-group');
+        checkboxes.forEach(cb => cb.checked = false);
+        updateZoning5692013DefinitionExpression();
+        updateZoning5692013FilterOptions();
+      });
     });
   </script>
 </body>
 </html>
-</html>
-
